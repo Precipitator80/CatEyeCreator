@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <meta charset="UTF-8">
+    <title>Rye's Cat Eye Creator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .form-label {
+            font-weight: bold;
+        }
+
+        #eye-svg {
+            background: #eef6ff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card container my-3">
+        <div id="cardBody" class="card-body">
+            <h1 class="card-title text-center">Rye's Cat Eye Creator</h1>
+            <div class="row text-center">
+                <svg id="eye-svg" width="600" height="200" viewBox="0 0 600 200"
+                    class="border border-3 shadow-sm rounded my-2"></svg>
+                <small class="text-body-secondary">Drag sliders to adjust eye parameters.</small>
+            </div>
+        </div>
+    </div>
+    <script>
+        const width = 600;
+        const height = 200;
+
+        // Define labels, ranges and defaults for sliders.
+        const eyeParamsConfig = {
+            'Basics': {
+                width: { label: 'Width', type: 'range', min: width / 12, max: width / 5, default: width / 6, format: v => v },
+                slant: { label: 'Slant', type: 'range', min: -height / 4, max: height / 4, default: 0, format: v => v + '°' },
+            },
+            'Lid Controls': {
+                opL: { label: 'Inner Corner Openness', type: 'range', min: 0, max: 180, default: 130, format: v => v + '°' },
+                opR: { label: 'Outer Corner Openness', type: 'range', min: 0, max: 180, default: 130, format: v => v + '°' },
+                skewL: { label: 'Inner Corner Skew', type: 'range', min: 0, max: 100, default: 50, format: v => v + '%' },
+                skewR: { label: 'Outer Corner Skew', type: 'range', min: 0, max: 100, default: 50, format: v => v + '%' },
+                ulm: { label: 'Upper Lid Inner Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
+                urm: { label: 'Upper Lid Outer Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
+                llm: { label: 'Lower Lid Inner Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
+                lrm: { label: 'Lower Lid Outer Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
+            },
+            'Iris': {
+                iris: { label: 'Iris radius', type: 'range', min: 0, max: height / 2, default: height / 4, format: v => v }
+            },
+            'Colours': {
+                outlineColour: { label: 'Outline', type: 'colour', default: '#0E2D48' },
+                scleraColour: { label: 'Sclera', type: 'colour', default: '#71A3D0' },
+                irisColour: { label: 'Iris', type: 'colour', default: '#4458A8' },
+                shineColour: { label: 'Shine', type: 'colour', default: '#F7F1E1' }
+            }
+        };
+
+
+        // Add slider controls to the page.
+        const cardBody = document.getElementById('cardBody');
+        const controls = document.createElement('div');
+        const sliders = {};
+        for (const [groupLabel, keys] of Object.entries(eyeParamsConfig)) {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'row py-3';
+            groupDiv.innerHTML = `<h2 class="text-center">${groupLabel}</h2>`;
+
+            for (const [key, config] of Object.entries(keys)) {
+                const col = document.createElement('div');
+                col.className = 'col-6 px-5';
+
+                col.innerHTML = `<label for="${key}" class="form-label">${config.label}</label>`;
+                col.innerHTML += (config.type === 'range') ?
+                    `
+                    <input type="range" id="${key}" min="${config.min}" max="${config.max}" value="${config.default}" class="form-range">
+                    <span class="form-text" id="${key}-label"></span>
+                ` : `
+                    <input type="color" id="${key}" value="${config.default}" class="form-control form-control-color">
+                `;
+
+                sliders[key] = col.querySelector('input');
+                groupDiv.appendChild(col);
+            }
+            controls.appendChild(groupDiv);
+        }
+        cardBody.appendChild(controls);
+
+        // Helper functions for mathematics.
+        function degToRad(d) { return d * Math.PI / 180; }
+        function addVec(p, v) { return { x: p.x + v.x, y: p.y + v.y }; }
+        function vec(m, theta) { return { x: m * Math.cos(theta), y: m * Math.sin(theta) }; }
+
+        // Converts corner openness and skew values into angles for the Bezier curves.
+        function opennessSkewToAngles(opL, skewL, opR, skewR) {
+            const mapCorner = (op, skew, isRight) => {
+                const leftover = 180 - op;
+                const start = leftover * skew;
+                const end = start + op;
+                // Mirror the x-axis when calculating for the right corner.
+                return isRight
+                    ? { up: -start - 90, down: -end - 90 }
+                    : { up: start - 90, down: end - 90 };
+            };
+            const left = mapCorner(opL, skewL, false);
+            const right = mapCorner(opR, skewR, true);
+
+            return { lUpDeg: left.up, lDownDeg: left.down, rUpDeg: right.up, rDownDeg: right.down };
+        }
+
+
+        // Function to calculate eye outline and iris.
+        function buildEye() {
+            // Get the current settings of the parameters.
+            const params = {};
+            for (const [group, keys] of Object.entries(eyeParamsConfig)) {
+                for (const [key, cfg] of Object.entries(keys)) {
+                    const value = sliders[key].value;
+                    params[key] = value;
+                    // Update the value label if available.
+                    if (cfg.format) {
+                        document.getElementById(key + '-label').innerText = cfg.format(value);
+                    }
+                }
+            }
+
+            // Convert openness + skew to angles
+            const { lUpDeg, lDownDeg, rUpDeg, rDownDeg } = opennessSkewToAngles(
+                +params.opL, +params.skewL / 100,
+                +params.opR, +params.skewR / 100
+            );
+
+            // Calculate the slant in radians and as a vector for adjustments.
+            const slantRad = degToRad(+params.slant);
+            const slantVec = vec(+params.width, slantRad);
+
+            // Calculate the left and right points of the eye.
+            const centre = { x: width / 2, y: height / 2 };
+            const L = {
+                x: centre.x - slantVec.x,
+                y: centre.y + slantVec.y
+            };
+            const R = {
+                x: centre.x + slantVec.x,
+                y: centre.y - slantVec.y
+            };
+
+            // Calculate the vectors for the two Bezier curves.
+            const lUpVec = addVec(L, vec(+params.ulm, degToRad(lUpDeg) - slantRad));
+            const rUpVec = addVec(R, vec(+params.urm, degToRad(rUpDeg) - slantRad));
+            const lDownVec = addVec(L, vec(+params.llm, degToRad(lDownDeg) - slantRad));
+            const rDownVec = addVec(R, vec(+params.lrm, degToRad(rDownDeg) - slantRad));
+
+            // Use the points and vectors to define the outline of the eye.
+            const outline = [
+                `M ${L.x},${L.y}`,
+                `C ${lUpVec.x},${lUpVec.y} ${rUpVec.x},${rUpVec.y} ${R.x},${R.y}`,
+                `C ${rDownVec.x},${rDownVec.y} ${lDownVec.x},${lDownVec.y} ${L.x},${L.y}`,
+                'Z'
+            ].join(' ');
+
+            // Use a point on the line between L and R to place the iris.
+            const t = 0.4;
+            const cx = L.x + (R.x - L.x) * t;
+            const cy = L.y + (R.y - L.y) * t - height / 15;
+            const iris = { x: cx, y: cy, r: +params.iris };
+            return { outline, iris };
+        }
+
+        // Calculates and renders the eyes.
+        const eye_svg = document.getElementById("eye-svg");
+        function renderEye() {
+            const eye = buildEye();
+            const outlineColour = sliders.outlineColour.value;
+            const scleraColour = sliders.scleraColour.value;
+            const irisColour = sliders.irisColour.value;
+            const shineColour = sliders.shineColour.value;
+            eye_svg.innerHTML = `
+              <clipPath id="eyeClip">
+                <path d="${eye.outline}" stroke-width="5" />
+              </clipPath>
+
+              <!-- Original eye on right side -->
+              <g id="eye" transform="translate(${width / 4},0)">
+                <!-- Sclera -->
+                <path d="${eye.outline}" fill="${scleraColour}" />
+
+                <!-- Iris -->
+                <g clip-path="url(#eyeClip)">
+                    <!-- Iris outline -->
+                    <ellipse cx="${eye.iris.x}" cy="${eye.iris.y}" rx="${(eye.iris.r) * 0.65 + 5}" ry="${eye.iris.r + 4}" fill="${outlineColour}" />
+                    <!-- Iris fill -->
+                    <ellipse cx="${eye.iris.x}" cy="${eye.iris.y}" rx="${eye.iris.r * 0.65}" ry="${eye.iris.r}" fill="${irisColour}" />
+                    <!-- Pupil -->
+                    <ellipse cx="${eye.iris.x}" cy="${eye.iris.y}" rx="${eye.iris.r * 0.325}" ry="${eye.iris.r * 0.9}" fill="${outlineColour}" />
+                </g>
+
+                <!-- Eye outline -->
+                <path d="${eye.outline}" fill-opacity="0" stroke="${outlineColour}" stroke-width="5" />
+              </g>
+
+              <!-- Eye on left side -->
+              <use href="#eye" transform="scale(-1,1) translate(-${width},0)" />
+
+              <!-- Eye shine effect -->
+              <symbol id="shineShape">
+                <ellipse cx="${eye.iris.x}" cy="${eye.iris.y - eye.iris.r / 4}"
+                rx="${eye.iris.r / 4}" ry="${eye.iris.r / 6}"
+                fill="${shineColour}" />
+              </symbol>
+
+              <!-- Eye shine on right and left side -->
+              <g transform="translate(${width / 4},0)" clip-path="url(#eyeClip)">
+                <use href="#shineShape" transform="translate(${0.6 * eye.iris.r},0)" />
+              </g>
+              <g transform="scale(-1,1) translate(${-3 * width / 4},0)" clip-path="url(#eyeClip)">
+                <use href="#shineShape" transform="translate(${-0.6 * eye.iris.r},0)" />
+              </g>
+            `;
+        }
+
+        // Set the sliders to re-render the eye onInput. Also perform an initial render.
+        Object.values(sliders).forEach(inp => inp.oninput = renderEye);
+        renderEye();
+    </script>
+</body>
+
+</html>
