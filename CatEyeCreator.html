@@ -27,7 +27,7 @@
         <div id="cardBody" class="card-body">
             <h1 class="card-title text-center">Rye's Cat Eye Creator</h1>
             <div class="row text-center">
-                <svg id="eye-svg" width="600" height="200" viewBox="0 0 600 200"
+                <svg id="eye-svg" width="600" height="300" viewBox="0 0 600 300"
                     class="border border-3 shadow-sm rounded my-2"></svg>
                 <small class="text-body-secondary">Drag sliders to adjust eye parameters.</small>
             </div>
@@ -35,26 +35,73 @@
     </div>
     <script>
         const width = 600;
-        const height = 200;
+        const height = 300;
+
+        const weightMax = height / 2;
+        const weightDefault = weightMax / 2;
+        function formatWeight(w) { return Math.round(100 * (w / weightMax)) + '%'; }
 
         // Define labels, ranges and defaults for sliders.
         const eyeParamsConfig = {
             'Basics': {
-                width: { label: 'Width', type: 'range', min: width / 12, max: width / 5, default: width / 6, format: v => v },
-                slant: { label: 'Slant', type: 'range', min: -height / 4, max: height / 4, default: 0, format: v => v + '°' },
+                width: {
+                    label: 'Width', type: 'range',
+                    min: width / 15, max: width / 5, default: width / 7.5, minText: 'Small, juvenile', maxText: 'Mature, large'
+                },
+                slant: {
+                    label: 'Slant', type: 'range',
+                    min: -60, max: 60, default: 0, minText: 'Shy, nostalgic, sad', maxText: 'Fierce, passionate, adventurous',
+                    format: v => v + '°'
+                },
             },
             'Lid Controls': {
-                opL: { label: 'Inner Corner Openness', type: 'range', min: 0, max: 180, default: 130, format: v => v + '°' },
-                opR: { label: 'Outer Corner Openness', type: 'range', min: 0, max: 180, default: 130, format: v => v + '°' },
-                skewL: { label: 'Inner Corner Skew', type: 'range', min: 0, max: 100, default: 50, format: v => v + '%' },
-                skewR: { label: 'Outer Corner Skew', type: 'range', min: 0, max: 100, default: 50, format: v => v + '%' },
-                ulm: { label: 'Upper Lid Inner Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
-                urm: { label: 'Upper Lid Outer Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
-                llm: { label: 'Lower Lid Inner Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
-                lrm: { label: 'Lower Lid Outer Weight', type: 'range', min: 0, max: height / 2, default: height / 3, format: v => v + '%' },
+                opL: {
+                    label: 'Inner Corner Openness', type: 'range',
+                    min: 0, max: 180, default: 130, minText: 'Angry, suspicious', maxText: 'Calm, trusting',
+                    format: v => v + '°'
+                },
+                opR: {
+                    label: 'Outer Corner Openness', type: 'range',
+                    min: 0, max: 180, default: 130, minText: 'Anxious', maxText: 'Carefree, cool',
+                    format: v => v + '°'
+                },
+                skewL: {
+                    label: 'Inner Corner Skew', type: 'range',
+                    min: 0, max: 100, default: 50, minText: 'Suspicious', maxText: 'Bored, angry',
+                    format: v => v + '%'
+                },
+                skewR: {
+                    label: 'Outer Corner Skew', type: 'range',
+                    min: 0, max: 100, default: 50, minText: 'Confident, haughty', maxText: 'Shy, delicate, cool',
+                    format: v => v + '%'
+                },
+                ulm: {
+                    label: 'Upper Lid Inner Weight', type: 'range',
+                    min: 0, max: weightMax, default: weightDefault, minText: 'Angry, strict', maxText: 'Curious, lenient, surprised',
+                    format: formatWeight
+                },
+                urm: {
+                    label: 'Upper Lid Outer Weight', type: 'range',
+                    min: 0, max: weightMax, default: weightDefault, minText: 'Bored, distant', maxText: 'Alert',
+                    format: formatWeight
+                },
+                llm: {
+                    label: 'Lower Lid Inner Weight', type: 'range',
+                    min: 0, max: weightMax, default: weightDefault, minText: 'Schemeful', maxText: 'Sleepy',
+                    format: formatWeight
+                },
+                lrm: {
+                    label: 'Lower Lid Outer Weight', type: 'range',
+                    min: 0, max: weightMax, default: weightDefault, minText: 'Excited', maxText: 'Relaxed',
+                    format: formatWeight
+                },
             },
             'Iris': {
-                iris: { label: 'Iris radius', type: 'range', min: 0, max: height / 2, default: height / 4, format: v => v }
+                iris: {
+                    label: 'Iris Radius', type: 'range',
+                    min: 0, max: height / 3, default: height / 6, minText: 'Crazy, distant, mature', maxText: 'Bubbly, juvenile',
+                    format: v => v + '%'
+                }
             },
             'Colours': {
                 outlineColour: { label: 'Outline', type: 'colour', default: '#0E2D48' },
@@ -78,11 +125,16 @@
                 const col = document.createElement('div');
                 col.className = 'col-6 px-5';
 
+                const hasDescription = config.minText || config.maxText;
                 col.innerHTML = `<label for="${key}" class="form-label">${config.label}</label>`;
                 col.innerHTML += (config.type === 'range') ?
                     `
                     <input type="range" id="${key}" min="${config.min}" max="${config.max}" value="${config.default}" class="form-range">
-                    <span class="form-text" id="${key}-label"></span>
+                    <div class="row">
+                        ${hasDescription ? `<p class="form-text col-5 text-start">${config.minText ?? ''}</p>` : ''}
+                        <p class="form-text col${hasDescription ? '-2' : ''} text-center" id="${key}-label"></p>
+                        ${hasDescription ? `<p class="form-text col-5 text-end">${config.maxText ?? ''}</p>` : ''}
+                    </div>
                 ` : `
                     <input type="color" id="${key}" value="${config.default}" class="form-control form-control-color">
                 `;
@@ -125,9 +177,10 @@
                 for (const [key, cfg] of Object.entries(keys)) {
                     const value = sliders[key].value;
                     params[key] = value;
-                    // Update the value label if available.
-                    if (cfg.format) {
-                        document.getElementById(key + '-label').innerText = cfg.format(value);
+                    // Update a value label if included, also applying any custom formatting if available.
+                    const label = document.getElementById(key + '-label');
+                    if (label) {
+                        label.innerText = cfg.format ? cfg.format(value) : value;
                     }
                 }
             }
