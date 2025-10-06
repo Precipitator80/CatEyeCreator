@@ -112,6 +112,8 @@
             }
         };
 
+        // Map to hold values in JS.
+        const params = {};
 
         // Add slider controls to the page.
         const cardBody = document.getElementById('cardBody');
@@ -128,17 +130,56 @@
 
                 const hasDescription = config.minText || config.maxText;
                 col.innerHTML = `<label for="${key}" class="form-label">${config.label}</label>`;
-                col.innerHTML += (config.type === 'range') ?
-                    `
-                    <input type="range" id="${key}" min="${config.min}" max="${config.max}" value="${config.default}" class="form-range">
-                    <div class="row">
-                        ${hasDescription ? `<p class="form-text col-5 text-start">${config.minText ?? ''}</p>` : ''}
-                        <p class="form-text col${hasDescription ? '-2' : ''} text-center" id="${key}-label"></p>
-                        ${hasDescription ? `<p class="form-text col-5 text-end">${config.maxText ?? ''}</p>` : ''}
-                    </div>
-                ` : `
-                    <input type="color" id="${key}" value="${config.default}" class="form-control form-control-color">
-                `;
+                if (config.type === 'range') {
+                    const input = document.createElement('input');
+                    input.type = 'range';
+                    input.id = key;
+                    input.min = config.min;
+                    input.max = config.max;
+                    input.className = 'form-range';
+
+                    // Row to show current value (output) and value hint text.
+                    const valueRow = document.createElement('div');
+                    valueRow.classList = 'row';
+
+                    if (hasDescription) {
+                        const minP = document.createElement('p');
+                        minP.className = 'form-text col-5 text-start';
+                        minP.textContent = config.minText ?? '';
+                        valueRow.appendChild(minP);
+                    }
+
+                    const output = document.createElement('output');
+                    output.setAttribute('for', input.id);
+                    output.id = key + 'Value';
+                    output.ariaHidden = true;
+                    output.classList = `form-text col${hasDescription ? '-2' : ''} text-center`;
+                    valueRow.appendChild(output);
+
+                    if (hasDescription) {
+                        const maxP = document.createElement('p');
+                        maxP.className = 'form-text col-5 text-end';
+                        maxP.textContent = config.maxText ?? '';
+                        valueRow.appendChild(maxP);
+                    }
+
+                    // Set the initial value for both HTML elements and the params map.
+                    input.value = config.default;
+                    params[key] = input.value;
+                    output.textContent = config.format ? config.format(input.value) : input.value;
+
+                    // Add a listener to update values on change, applying any custom formatting if available.
+                    input.addEventListener('input', function () {
+                        params[key] = this.value;
+                        output.textContent = config.format ? config.format(this.value) : this.value;
+                    });
+
+                    col.appendChild(input);
+                    col.appendChild(valueRow);
+                }
+                else {
+                    col.innerHTML += `<input type="color" id="${key}" value="${config.default}" class="form-control form-control-color">`;
+                }
 
                 sliders[key] = col.querySelector('input');
                 groupDiv.appendChild(col);
@@ -172,20 +213,6 @@
 
         // Function to calculate eye outline and iris.
         function buildEye() {
-            // Get the current settings of the parameters.
-            const params = {};
-            for (const [group, keys] of Object.entries(eyeParamsConfig)) {
-                for (const [key, cfg] of Object.entries(keys)) {
-                    const value = sliders[key].value;
-                    params[key] = value;
-                    // Update a value label if included, also applying any custom formatting if available.
-                    const label = document.getElementById(key + '-label');
-                    if (label) {
-                        label.innerText = cfg.format ? cfg.format(value) : value;
-                    }
-                }
-            }
-
             // Convert openness + skew to angles
             const { lUpDeg, lDownDeg, rUpDeg, rDownDeg } = opennessSkewToAngles(
                 +params.opL, +params.skewL / 100,
